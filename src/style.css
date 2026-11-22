@@ -149,7 +149,8 @@ h2 { color: var(--blue-deep); font-size: clamp(44px, 5.4vw, 68px); line-height: 
   font-weight: 700;
   cursor: pointer;
 }
-.video-intro-close:hover { background: #164ca1; }
+.video-intro-close:hover:not(:disabled) { background: #164ca1; }
+.video-intro-close:disabled { cursor: not-allowed; opacity: .55; }
 .video-shell.is-celebrating video { filter: brightness(.48); }
 .celebration {
   position: fixed;

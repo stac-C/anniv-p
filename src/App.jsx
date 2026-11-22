@@ -370,6 +370,7 @@ function App() {
   const [soundNeedsGesture, setSoundNeedsGesture] = useState(false);
   const [showLaunchPrompt, setShowLaunchPrompt] = useState(false);
   const [introVideoOpen, setIntroVideoOpen] = useState(true);
+  const [canSkipIntro, setCanSkipIntro] = useState(false);
   const introDialogRef = useRef(null);
   const videoRef = useRef(null);
   const celebrationTimer = useRef(null);
@@ -632,6 +633,7 @@ function App() {
   };
 
   const handleVideoEnded = () => {
+    setCanSkipIntro(true);
     setIntroVideoOpen(false);
     setCelebrating(true);
     setPlaying(false);
@@ -696,9 +698,9 @@ function App() {
         <div className="film-inner">
           <div className="film-copy"><p className="eyebrow"><span /> 22 novembre · Joyeux anniversaire</p><h2>Une lumière<br /><em>qui rayonne.</em></h2><p>Paola Jessica, ta lumière brille intensément. Les portes du soleil levant seront toujours là pour t’accompagner et te faire avancer.</p></div>
           
-            <dialog ref={introDialogRef} open className={`video-shell${celebrating ? ' is-celebrating' : ''}${introVideoOpen ? ' is-intro' : ''}`} onCancel={(event) => { event.preventDefault(); closeIntroVideo(); }}>
+            <dialog ref={introDialogRef} open className={`video-shell${celebrating ? ' is-celebrating' : ''}${introVideoOpen ? ' is-intro' : ''}`} onCancel={(event) => { event.preventDefault(); if (canSkipIntro) closeIntroVideo(); }}>
             <video ref={videoRef} src={`${import.meta.env.BASE_URL}media/Paola_InShot_20261122.mp4`} autoPlay muted={muted} controls={introVideoOpen} playsInline preload="metadata" onPlay={handleVideoPlay} onPause={() => setPlaying(false)} onEnded={handleVideoEnded} onVolumeChange={(event) => setMuted(event.currentTarget.muted)} aria-label="Film d’anniversaire de Paola Jessica" />
-            {introVideoOpen && <button className="video-intro-close" onClick={closeIntroVideo}><ArrowDown size={16} /> Passer la vidéo · Découvrir le site</button>}
+            {introVideoOpen && <button className="video-intro-close" disabled={!canSkipIntro} onClick={closeIntroVideo}><ArrowDown size={16} /> Passer la vidéo · Découvrir le site</button>}
             {autoplayBlocked && <button className="video-start" onClick={togglePlayback}><Play size={18} fill="currentColor" /> Lancer le film avec le son</button>}
             <Celebration active={celebrating} />
             <div className="video-corner">PAOLA JESSICA · 22 NOVEMBRE<Heart size={13} fill="currentColor" /></div>
