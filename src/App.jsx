@@ -367,11 +367,22 @@ function SlideshowThreeScene({ active }) {
 function App() {
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [galleryFilter, setGalleryFilter] = useState('all');
+  const [mediaOrientations, setMediaOrientations] = useState({});
   const galleryRef = useRef(null);
   const lightboxRef = useRef(null);
   const filterFlipStateRef = useRef(null);
   const zoomOriginRef = useRef(null);
   const prefersReducedMotion = useReducedMotion();
+  const recordMediaOrientation = (src, event) => {
+    const media = event.currentTarget;
+    const width = media.videoWidth || media.naturalWidth;
+    const height = media.videoHeight || media.naturalHeight;
+    if (!width || !height) return;
+    const orientation = height > width ? 'portrait' : 'landscape';
+    setMediaOrientations((current) => current[src] === orientation
+      ? current
+      : { ...current, [src]: orientation });
+  };
   const { contextSafe } = useGSAP(() => {
     if (prefersReducedMotion || !galleryRef.current) return;
     const items = galleryRef.current.querySelectorAll('.gallery-item');
@@ -906,15 +917,27 @@ function App() {
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={galleryMedia[selectedMedia].src}
-                className="lightbox-slide"
+                className={`lightbox-slide${mediaOrientations[galleryMedia[selectedMedia].src] === 'portrait' ? ' is-portrait' : ''}`}
                 initial={prefersReducedMotion || zoomOriginRef.current ? false : { opacity: 0, scale: 0.985 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 1.015 }}
                 transition={{ duration: prefersReducedMotion ? 0 : 0.4, ease: 'easeInOut' }}
               >
                 {galleryMedia[selectedMedia].type === 'video'
-                  ? <video data-flip-id={galleryMedia[selectedMedia].src} className="lightbox-video" src={galleryMedia[selectedMedia].src} controls={!slideshow} autoPlay={slideshow} muted={slideshow} playsInline preload="metadata" />
-                  : <img data-flip-id={galleryMedia[selectedMedia].src} src={galleryMedia[selectedMedia].src} alt={galleryMedia[selectedMedia].alt} />}
+                  ? <>
+                    {slideshow && mediaOrientations[galleryMedia[selectedMedia].src] === 'portrait' && (
+                      <div className="lightbox-portrait-backdrop is-video" aria-hidden="true" />
+                    )}
+                    <video data-flip-id={galleryMedia[selectedMedia].src} className="lightbox-video" src={galleryMedia[selectedMedia].src} controls={!slideshow} autoPlay={slideshow} muted={slideshow} playsInline preload="metadata" onLoadedMetadata={(event) => recordMediaOrientation(galleryMedia[selectedMedia].src, event)} />
+                  </>
+                  : <>
+                    {slideshow && mediaOrientations[galleryMedia[selectedMedia].src] === 'portrait' && (
+                      <div className="lightbox-portrait-backdrop" aria-hidden="true">
+                        <img src={galleryMedia[selectedMedia].src} alt="" />
+                      </div>
+                    )}
+                    <img data-flip-id={galleryMedia[selectedMedia].src} src={galleryMedia[selectedMedia].src} alt={galleryMedia[selectedMedia].alt} onLoad={(event) => recordMediaOrientation(galleryMedia[selectedMedia].src, event)} />
+                  </>}
               </motion.div>
             </AnimatePresence>
             {slideshow && <div className="slideshow-message">{galleryMedia[selectedMedia].caption}</div>}

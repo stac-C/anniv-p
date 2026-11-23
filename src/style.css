@@ -1096,19 +1096,29 @@ h2 {
   position: absolute;
   z-index: 1;
   inset: 0;
+  width: auto;
+  height: auto;
   place-items: center;
 }
 
-.lightbox.is-slideshow .lightbox-slide img,
-.lightbox.is-slideshow .lightbox-slide video {
+.lightbox.is-slideshow .lightbox-slide > img,
+.lightbox.is-slideshow .lightbox-slide > video {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   max-width: none;
   max-height: none;
   object-fit: contain;
   object-position: center;
   box-shadow: none;
+}
+
+.lightbox-portrait-backdrop {
+  display: none;
 }
 
 .lightbox.is-slideshow figure video {
@@ -1131,10 +1141,10 @@ h2 {
 
 .lightbox.is-slideshow .slideshow-message {
   position: absolute;
-  right: clamp(16px, 3vw, 40px);
+  left: 50%;
+  width: min(1100px, calc(100% - 32px));
   bottom: clamp(62px, 8vw, 96px);
-  left: clamp(16px, 3vw, 40px);
-  max-width: 1100px;
+  translate: -50% 0;
   z-index: 2;
   padding: 12px 18px 10px;
   border: 1px solid rgba(255, 255, 255, 0.26);
@@ -1146,6 +1156,7 @@ h2 {
   font-size: clamp(18px, 2.8vw, 34px);
   line-height: 1.2;
   letter-spacing: .05em;
+  text-align: center;
   text-transform: uppercase;
   text-shadow: 0 2px 20px rgba(0, 0, 0, 0.35);
   animation: celebrate-in .45s ease both;
@@ -1158,6 +1169,7 @@ h2 {
   left: 24px;
   color: white;
   font-size: 12px;
+  text-align: center;
   text-shadow: 0 2px 14px #000;
   z-index: 3;
 }
@@ -1192,6 +1204,53 @@ h2 {
   min-height: 42px;
   background: #07132670;
   backdrop-filter: blur(8px);
+}
+
+@media (min-width: 900px) and (orientation: landscape) {
+  .lightbox.is-slideshow .lightbox-slide {
+    inset: clamp(78px, 9vh, 112px) clamp(56px, 6vw, 96px) clamp(170px, 21vh, 220px);
+  }
+
+  .lightbox.is-slideshow .lightbox-slide.is-portrait .lightbox-portrait-backdrop {
+    position: absolute;
+    inset: 0;
+    display: block;
+    overflow: hidden;
+    border-radius: 18px;
+    opacity: .8;
+    background:
+      radial-gradient(ellipse at center, rgba(214, 175, 101, .2), transparent 58%),
+      linear-gradient(135deg, rgba(30, 55, 83, .8), rgba(7, 16, 32, .94));
+    box-shadow: 0 24px 80px rgba(0, 0, 0, .35);
+  }
+
+  .lightbox.is-slideshow .lightbox-slide.is-portrait .lightbox-portrait-backdrop.is-video {
+    background:
+      radial-gradient(ellipse at center, rgba(214, 175, 101, .24), transparent 55%),
+      linear-gradient(135deg, rgba(30, 55, 83, .82), rgba(7, 16, 32, .96));
+  }
+
+  .lightbox.is-slideshow .lightbox-slide.is-portrait .lightbox-portrait-backdrop::after {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 20%, rgba(3, 10, 20, .58) 100%);
+    content: "";
+  }
+
+  .lightbox.is-slideshow .lightbox-slide.is-portrait .lightbox-portrait-backdrop img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(30px) brightness(.62) saturate(.82);
+    transform: scale(1.12);
+  }
+
+  .lightbox.is-slideshow .lightbox-slide.is-portrait > img,
+  .lightbox.is-slideshow .lightbox-slide.is-portrait > video {
+    border-radius: 8px;
+    box-shadow: 0 20px 70px rgba(0, 0, 0, .55);
+  }
 }
 
 @keyframes rise-in {
