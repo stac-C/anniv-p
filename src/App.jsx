@@ -1,7 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ArrowDown, ArrowLeft, ArrowRight, Heart, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
+import { useGSAP } from '@gsap/react';
+import gsap from 'gsap';
+import { Flip } from 'gsap/Flip';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import slideshowSoundtrackUrl from '../videoplayback.weba?url';
+
+gsap.registerPlugin(Flip, ScrollTrigger, useGSAP);
 
 const ambientSoundtrackFiles = ['videoplayback.m4a', 'together.m4a', 'Aitana - Vas A Quedarte.mp4'];
 
@@ -359,6 +366,84 @@ function SlideshowThreeScene({ active }) {
 
 function App() {
   const [selectedMedia, setSelectedMedia] = useState(null);
+  const [galleryFilter, setGalleryFilter] = useState('all');
+  const galleryRef = useRef(null);
+  const lightboxRef = useRef(null);
+  const filterFlipStateRef = useRef(null);
+  const zoomOriginRef = useRef(null);
+  const prefersReducedMotion = useReducedMotion();
+  const { contextSafe } = useGSAP(() => {
+    if (prefersReducedMotion || !galleryRef.current) return;
+    const items = galleryRef.current.querySelectorAll('.gallery-item');
+    items.forEach((item) => {
+      gsap.fromTo(item, {
+        autoAlpha: 0,
+        y: 22,
+      }, {
+        autoAlpha: 1,
+        y: 0,
+        duration: 0.5,
+        ease: 'power2.out',
+        immediateRender: false,
+        scrollTrigger: { trigger: item, start: 'top 90%', once: true },
+      });
+    });
+  }, { scope: galleryRef });
+  const animateGalleryMedia = contextSafe((event, isHovered) => {
+    if (prefersReducedMotion) return;
+    const media = event.currentTarget.querySelector('img, video');
+    if (!media) return;
+    gsap.to(media, {
+      scale: isHovered ? 1.045 : 1,
+      filter: isHovered ? 'brightness(0.86)' : 'brightness(1)',
+      duration: isHovered ? 0.55 : 0.35,
+      ease: 'power2.out',
+      overwrite: 'auto',
+    });
+  });
+  const changeGalleryFilter = contextSafe((filter) => {
+    if (filter === galleryFilter) return;
+    if (!prefersReducedMotion && galleryRef.current) {
+      filterFlipStateRef.current = Flip.getState(galleryRef.current.querySelectorAll('.gallery-item'));
+    }
+    setGalleryFilter(filter);
+  });
+  const openGalleryMedia = contextSafe((event, index) => {
+    zoomOriginRef.current = prefersReducedMotion ? null : galleryMedia[index].src;
+    setSelectedMedia(index);
+  });
+  useLayoutEffect(() => {
+    const state = filterFlipStateRef.current;
+    filterFlipStateRef.current = null;
+    if (state && !prefersReducedMotion) {
+      contextSafe(() => Flip.from(state, {
+        duration: 0.65,
+        ease: 'power2.inOut',
+        scale: true,
+        fade: true,
+        stagger: 0.02,
+        onComplete: () => ScrollTrigger.refresh(),
+      }))();
+    } else {
+      ScrollTrigger.refresh();
+    }
+  }, [galleryFilter, prefersReducedMotion, contextSafe]);
+  useLayoutEffect(() => {
+    if (selectedMedia !== null && zoomOriginRef.current && !prefersReducedMotion) {
+      const target = lightboxRef.current?.querySelector('[data-flip-id]');
+      const source = [...(galleryRef.current?.querySelectorAll('[data-flip-id]') ?? [])]
+        .find((item) => item.dataset.flipId === zoomOriginRef.current);
+      zoomOriginRef.current = null;
+      if (target && source) {
+        contextSafe(() => Flip.fit(target, source, {
+          scale: true,
+          duration: 0.75,
+          ease: 'power3.inOut',
+          runBackwards: true,
+        }))();
+      }
+    }
+  }, [selectedMedia, prefersReducedMotion, contextSafe]);
   const [slideshow, setSlideshow] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
   const [playing, setPlaying] = useState(true);
@@ -534,6 +619,7 @@ function App() {
   };
 
   const movePhoto = (direction) => {
+    zoomOriginRef.current = null;
     setSelectedMedia((current) => (current + direction + galleryMedia.length) % galleryMedia.length);
   };
 
@@ -689,6 +775,7 @@ function App() {
 
   const closeAlbum = () => {
     if (slideshow) stopSlideshow();
+    zoomOriginRef.current = null;
     setSelectedMedia(null);
   };
 
@@ -751,16 +838,44 @@ function App() {
           <div><p className="eyebrow"><span /> La galerie de Paola</p><h2>Des images,<br /><em>des émotions.</em></h2></div>
           <p className="section-description">Chaque photo et chaque vidéo raconte un morceau de ton chemin. Que le soleil levant éclaire toujours la suite de ton histoire.</p>
         </div>
-        <div className="gallery" aria-label="Galerie des souvenirs">
+        <div className="gallery-filters" role="group" aria-label="Filtrer les souvenirs">
+          {[
+            { value: 'all', label: 'Tout', count: galleryMedia.length },
+            { value: 'image', label: 'Photos', count: galleryMedia.filter((media) => media.type === 'image').length },
+            { value: 'video', label: 'Vidéos', count: galleryMedia.filter((media) => media.type === 'video').length },
+          ].map((filter) => (
+            <motion.button
+              key={filter.value}
+              type="button"
+              className={`gallery-filter${galleryFilter === filter.value ? ' is-active' : ''}`}
+              aria-pressed={galleryFilter === filter.value}
+              whileHover={prefersReducedMotion ? undefined : { y: -2 }}
+              whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
+              onClick={() => changeGalleryFilter(filter.value)}
+            >
+              {filter.label}<span>{String(filter.count).padStart(2, '0')}</span>
+            </motion.button>
+          ))}
+        </div>
+        <div className={`gallery${galleryFilter !== 'all' ? ' is-filtered' : ''}`} aria-label="Galerie des souvenirs" ref={galleryRef}>
           {galleryMedia.map((media, index) => (
-            <button className={`gallery-item gallery-item-${index + 1}${media.type === 'video' ? ' is-video' : ''}`} key={media.src} onClick={() => setSelectedMedia(index)} aria-label={`Ouvrir ${media.type === 'video' ? 'la vidéo' : 'la photo'} ${index + 1}: ${media.alt}`}>
+            <motion.button
+              className={`gallery-item gallery-item-${index + 1}${media.type === 'video' ? ' is-video' : ''}`}
+              key={media.src}
+              whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
+              onPointerEnter={(event) => animateGalleryMedia(event, true)}
+              onPointerLeave={(event) => animateGalleryMedia(event, false)}
+              onClick={(event) => openGalleryMedia(event, index)}
+              aria-label={`Ouvrir ${media.type === 'video' ? 'la vidéo' : 'la photo'} ${index + 1}: ${media.alt}`}
+              hidden={galleryFilter !== 'all' && media.type !== galleryFilter}
+            >
               {media.type === 'video'
-                ? <video src={media.src} muted playsInline preload="metadata" aria-hidden="true" />
-                : <img src={media.src} alt="" loading="lazy" />}
+                ? <video data-flip-id={media.src} src={media.src} muted playsInline preload="metadata" aria-hidden="true" />
+                : <img data-flip-id={media.src} src={media.src} alt="" loading="lazy" />}
               {media.type === 'video' && <span className="gallery-play" aria-hidden="true"><Play size={22} fill="currentColor" /></span>}
               <span className="gallery-caption">{media.caption}</span>
               <span className="gallery-index">{String(index + 1).padStart(2, '0')}</span>
-            </button>
+            </motion.button>
           ))}
         </div>
       </section>
@@ -782,15 +897,26 @@ function App() {
       )}
 
       {selectedMedia !== null && (
-        <div className={`lightbox${slideshow ? ' is-slideshow' : ''}`} role="dialog" aria-modal="true" aria-label={slideshow ? 'Diaporama plein écran' : 'Souvenir en grand format'} onClick={closeAlbum}>
+        <div ref={lightboxRef} className={`lightbox${slideshow ? ' is-slideshow' : ''}`} role="dialog" aria-modal="true" aria-label={slideshow ? 'Diaporama plein écran' : 'Souvenir en grand format'} onClick={closeAlbum}>
           <button className="lightbox-close" aria-label="Fermer" onClick={closeAlbum}><X size={22} /></button>
           {slideshow && <button className="slideshow-stop" onClick={(event) => { event.stopPropagation(); stopSlideshow(); setSelectedMedia(null); }}><Pause size={15} /> Arrêter le diaporama</button>}
           <button className="lightbox-arrow lightbox-prev" aria-label="Souvenir précédent" onClick={(event) => { event.stopPropagation(); movePhoto(-1); }}><ArrowLeft size={23} /></button>
           <figure onClick={(event) => event.stopPropagation()}>
             {slideshow && <SlideshowThreeScene active={slideshow} />}
-            {galleryMedia[selectedMedia].type === 'video'
-              ? <video key={galleryMedia[selectedMedia].src} className="lightbox-video" src={galleryMedia[selectedMedia].src} controls={!slideshow} autoPlay={slideshow} muted={slideshow} playsInline preload="metadata" />
-              : <img src={galleryMedia[selectedMedia].src} alt={galleryMedia[selectedMedia].alt} />}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={galleryMedia[selectedMedia].src}
+                className="lightbox-slide"
+                initial={prefersReducedMotion || zoomOriginRef.current ? false : { opacity: 0, scale: 0.985 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 1.015 }}
+                transition={{ duration: prefersReducedMotion ? 0 : 0.4, ease: 'easeInOut' }}
+              >
+                {galleryMedia[selectedMedia].type === 'video'
+                  ? <video data-flip-id={galleryMedia[selectedMedia].src} className="lightbox-video" src={galleryMedia[selectedMedia].src} controls={!slideshow} autoPlay={slideshow} muted={slideshow} playsInline preload="metadata" />
+                  : <img data-flip-id={galleryMedia[selectedMedia].src} src={galleryMedia[selectedMedia].src} alt={galleryMedia[selectedMedia].alt} />}
+              </motion.div>
+            </AnimatePresence>
             {slideshow && <div className="slideshow-message">{galleryMedia[selectedMedia].caption}</div>}
             <figcaption>{String(selectedMedia + 1).padStart(2, '0')} <span>/</span> {galleryMedia.length} · {galleryMedia[selectedMedia].caption}</figcaption>
           </figure>
