@@ -285,7 +285,7 @@ function Celebration({ active }) {
   }, [active]);
 
   if (!active) return null;
-  return <div className="celebration" aria-live="polite"><canvas ref={canvasRef} /><div className="celebration-message"><span>Paola Jessica</span><strong>Joyeux anniversaire · PAOLA</strong><small>Ta lumière ouvre les portes du soleil levant</small></div></div>;
+  return <div className="celebration" role="dialog" aria-modal="true" aria-label="Message d’anniversaire" aria-live="polite"><canvas ref={canvasRef} /><div className="celebration-message"><span>Paola Jessica</span><strong>Joyeux anniversaire · PAOLA</strong><small>Ta lumière ouvre les portes du soleil levant</small></div></div>;
 }
 
 function SlideshowThreeScene({ active }) {
@@ -457,6 +457,7 @@ function App() {
   }, [selectedMedia, prefersReducedMotion, contextSafe]);
   const [slideshow, setSlideshow] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
+  const [showPatience, setShowPatience] = useState(false);
   const [playing, setPlaying] = useState(true);
   const [muted, setMuted] = useState(false);
   const [musicPlaying, setMusicPlaying] = useState(false);
@@ -470,6 +471,7 @@ function App() {
   const introDialogRef = useRef(null);
   const videoRef = useRef(null);
   const celebrationTimer = useRef(null);
+  const patienceTimer = useRef(null);
   const slideshowTimer = useRef(null);
   const soundtrackRef = useRef(null);
   const slideshowSoundtrackRef = useRef(null);
@@ -602,6 +604,16 @@ function App() {
     }
   };
 
+  const handleIntroDiscover = () => {
+    if (!canSkipIntro) {
+      window.clearTimeout(patienceTimer.current);
+      setShowPatience(true);
+      patienceTimer.current = window.setTimeout(() => setShowPatience(false), 2800);
+      return;
+    }
+    closeIntroVideo();
+  };
+
   const toggleSound = async () => {
     const video = videoRef.current;
     if (!video) return;
@@ -622,6 +634,8 @@ function App() {
 
 // dddddd
   const closeIntroVideo = () => {
+    window.clearTimeout(patienceTimer.current);
+    setShowPatience(false);
     setIntroVideoOpen(false);
     if (videoRef.current && !videoRef.current.paused) {
       videoRef.current.pause();
@@ -703,6 +717,7 @@ function App() {
 
   useEffect(() => () => {
     window.clearTimeout(celebrationTimer.current);
+    window.clearTimeout(patienceTimer.current);
     window.clearInterval(slideshowTimer.current);
     soundtrackRef.current?.pause();
     soundtrackRef.current = null;
@@ -710,6 +725,9 @@ function App() {
   }, []);
 
   const replayVideo = async () => {
+    window.clearTimeout(celebrationTimer.current);
+    window.clearTimeout(patienceTimer.current);
+    setShowPatience(false);
     setShowLaunchPrompt(false);
     setCelebrating(false);
     setIntroVideoOpen(true);
@@ -731,11 +749,13 @@ function App() {
 
   const handleVideoEnded = () => {
     setCanSkipIntro(true);
-    setIntroVideoOpen(false);
+    window.clearTimeout(patienceTimer.current);
+    setShowPatience(false);
     setCelebrating(true);
     setPlaying(false);
     celebrationTimer.current = window.setTimeout(() => {
       setCelebrating(false);
+      setIntroVideoOpen(false);
       setShowLaunchPrompt(true);
       setPlaying(false);
       const video = videoRef.current;
@@ -796,9 +816,22 @@ function App() {
         <div className="film-inner">
           <div className="film-copy"><p className="eyebrow"><span /> 22 novembre · Joyeux anniversaire</p><h2>Une lumière<br /><em>qui rayonne.</em></h2><p>Paola Jessica, ta lumière brille intensément. Les portes du soleil levant seront toujours là pour t’accompagner et te faire avancer.</p></div>
           
-            <dialog ref={introDialogRef} open className={`video-shell${celebrating ? ' is-celebrating' : ''}${introVideoOpen ? ' is-intro' : ''}`} onCancel={(event) => { event.preventDefault(); if (canSkipIntro) closeIntroVideo(); }}>
+            <dialog ref={introDialogRef} open className={`video-shell${celebrating ? ' is-celebrating' : ''}${introVideoOpen ? ' is-intro' : ''}`} onCancel={(event) => { event.preventDefault(); if (canSkipIntro && !celebrating) closeIntroVideo(); }}>
             <video ref={videoRef} src={`${import.meta.env.BASE_URL}media/Paola_InShot_20261122.mp4`} poster={`${import.meta.env.BASE_URL}media/picts/FB_IMG_1669050277283.jpg`} autoPlay muted={muted} controls={introVideoOpen} playsInline preload="metadata" onPlay={handleVideoPlay} onPause={() => setPlaying(false)} onEnded={handleVideoEnded} onVolumeChange={(event) => setMuted(event.currentTarget.muted)} aria-label="Film d’anniversaire de Paola Jessica" />
-            {introVideoOpen && <button className="video-intro-close" disabled={!canSkipIntro} onClick={closeIntroVideo}><ArrowDown size={16} /> Passer la vidéo · Découvrir le site</button>}
+            {introVideoOpen && !celebrating && <button className="video-intro-close" onClick={handleIntroDiscover}><ArrowDown size={16} /> Passer la vidéo · Découvrir le site</button>}
+            {showPatience && introVideoOpen && !celebrating && (
+              <div className="patience-overlay" role="status" aria-live="polite">
+                <span className="patience-spark patience-spark-one" aria-hidden="true">✦</span>
+                <span className="patience-spark patience-spark-two" aria-hidden="true">✧</span>
+                <span className="patience-spark patience-spark-three" aria-hidden="true">♥</span>
+                <div className="patience-card">
+                  <span className="patience-heart"><Heart size={30} fill="currentColor" /></span>
+                  <p>Encore un petit instant...</p>
+                  <strong>La surprise arrive !</strong>
+                  <small>Profite du film jusqu’à la dernière seconde</small>
+                </div>
+              </div>
+            )}
             {autoplayBlocked && <button className="video-start" onClick={togglePlayback}><Play size={18} fill="currentColor" /> Lancer le film avec le son</button>}
             <Celebration active={celebrating} />
             <div className="video-corner">PAOLA JESSICA · 22 NOVEMBRE<Heart size={13} fill="currentColor" /></div>
