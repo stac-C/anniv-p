@@ -6,11 +6,11 @@ import gsap from 'gsap';
 import { Flip } from 'gsap/Flip';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import slideshowSoundtrackUrl from '../videoplayback.weba?url';
 
 gsap.registerPlugin(Flip, ScrollTrigger, useGSAP);
 
 const ambientSoundtrackFiles = ['videoplayback.m4a', 'together.m4a', 'Aitana - Vas A Quedarte.mp4'];
+const slideshowSoundtrackFiles = ['together.m4a', 'videoplayback.m4a'];
 
 const mediaFiles = [
   '2023-11-15-132033455.mp4',
@@ -477,7 +477,7 @@ function App() {
   const slideshowSoundtrackRef = useRef(null);
 
   useEffect(() => {
-    const audio = new Audio(slideshowSoundtrackUrl);
+    const audio = new Audio();
     audio.loop = true;
     audio.volume = 0.8;
     slideshowSoundtrackRef.current = audio;
@@ -698,6 +698,9 @@ function App() {
     try {
       const audio = slideshowSoundtrackRef.current;
       if (!audio) throw new Error('Slideshow soundtrack is unavailable');
+      const track = slideshowSoundtrackFiles[Math.floor(Math.random() * slideshowSoundtrackFiles.length)];
+      audio.src = `${import.meta.env.BASE_URL}media/${encodeURIComponent(track)}`;
+      audio.load();
       await audio.play();
     } catch {
       setSlideshowMusicError(true);
