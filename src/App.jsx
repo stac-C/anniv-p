@@ -5,12 +5,12 @@ import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import { Flip } from 'gsap/Flip';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react';
 
 gsap.registerPlugin(Flip, ScrollTrigger, useGSAP);
 
-const ambientSoundtrackFiles = ['videoplayback.m4a', 'together.m4a', 'Aitana - Vas A Quedarte.mp4'];
-const slideshowSoundtrackFiles = ['together.m4a', 'videoplayback.m4a'];
+const ambientSoundtrackFiles = ['videoplayback.mp3', 'together.mp3', 'videoplayback-weba.mp3', 'Aitana - Vas A Quedarte.mp4'];
+const slideshowSoundtrackFiles = ['together.mp3', 'videoplayback.mp3', 'videoplayback-weba.mp3'];
 
 const mediaFiles = [
   '2023-11-15-132033455.mp4',
@@ -364,6 +364,21 @@ function SlideshowThreeScene({ active }) {
   return <div className="slideshow-three-scene" ref={mountRef} aria-hidden="true" />;
 }
 
+function AudioReactiveVisual({ active, energy, beat, inSlideshow = false }) {
+  const glowScale = useTransform(beat, [0, 1], [1, 1.1]);
+  const glowOpacity = useTransform(energy, [0, 1], [0.04, 1]);
+  const ringScale = useTransform(beat, [0, 1], [0.88, 1.2]);
+  const ringOpacity = useTransform(beat, [0, 1], [0.04, 1]);
+
+  if (!active) return null;
+  return (
+    <div className={`audio-reactive-visual${inSlideshow ? ' is-slideshow' : ''}`} aria-hidden="true">
+      <motion.div className="audio-reactive-glow" style={{ scale: glowScale, opacity: glowOpacity }} />
+      <motion.div className="audio-reactive-ring" style={{ scale: ringScale, opacity: ringOpacity }} />
+    </div>
+  );
+}
+
 function App() {
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [galleryFilter, setGalleryFilter] = useState('all');
@@ -373,6 +388,10 @@ function App() {
   const filterFlipStateRef = useRef(null);
   const zoomOriginRef = useRef(null);
   const prefersReducedMotion = useReducedMotion();
+  const audioEnergy = useMotionValue(0);
+  const audioBeat = useMotionValue(0);
+  const smoothAudioEnergy = useSpring(audioEnergy, { stiffness: 150, damping: 22 });
+  const smoothAudioBeat = useSpring(audioBeat, { stiffness: 260, damping: 24 });
   const recordMediaOrientation = (src, event) => {
     const media = event.currentTarget;
     const width = media.videoWidth || media.naturalWidth;
@@ -461,6 +480,7 @@ function App() {
   const [playing, setPlaying] = useState(true);
   const [muted, setMuted] = useState(false);
   const [musicPlaying, setMusicPlaying] = useState(false);
+  const [audioReactivePlaying, setAudioReactivePlaying] = useState(false);
   const [musicNeedsGesture, setMusicNeedsGesture] = useState(false);
   const [slideshowMusicError, setSlideshowMusicError] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
@@ -475,6 +495,8 @@ function App() {
   const slideshowTimer = useRef(null);
   const soundtrackRef = useRef(null);
   const slideshowSoundtrackRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const audioAnalyserRef = useRef(null);
 
   useEffect(() => {
     const audio = new Audio();
@@ -489,7 +511,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const audio = new Audio(`${import.meta.env.BASE_URL}media/videoplayback.m4a`);
+    const audio = new Audio();
     audio.loop = true;
     audio.volume = 0.8;
     soundtrackRef.current = audio;
@@ -501,12 +523,91 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+    const backgroundAudio = soundtrackRef.current;
+    const slideshowAudio = slideshowSoundtrackRef.current;
+    if (!AudioContextConstructor || !backgroundAudio || !slideshowAudio) return undefined;
+
+    const context = new AudioContextConstructor();
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.82;
+    analyser.connect(context.destination);
+    const sources = [
+      context.createMediaElementSource(backgroundAudio),
+      context.createMediaElementSource(slideshowAudio),
+    ];
+    sources.forEach((source) => source.connect(analyser));
+    audioContextRef.current = context;
+    audioAnalyserRef.current = analyser;
+
+    const resumeContext = () => {
+      if (context.state === 'suspended') {
+        context.resume().catch((error) => {
+          console.error('Impossible de démarrer l’analyse audio en temps réel.', error);
+        });
+      }
+    };
+    const audioElements = [backgroundAudio, slideshowAudio];
+    audioElements.forEach((audio) => audio.addEventListener('play', resumeContext));
+    window.addEventListener('pointerdown', resumeContext);
+    window.addEventListener('keydown', resumeContext);
+
+    return () => {
+      audioElements.forEach((audio) => audio.removeEventListener('play', resumeContext));
+      window.removeEventListener('pointerdown', resumeContext);
+      window.removeEventListener('keydown', resumeContext);
+      sources.forEach((source) => source.disconnect());
+      analyser.disconnect();
+      audioContextRef.current = null;
+      audioAnalyserRef.current = null;
+      context.close().catch((error) => {
+        console.error('Impossible de fermer l’analyse audio.', error);
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    const analyser = audioAnalyserRef.current;
+    if (!audioReactivePlaying || !analyser || prefersReducedMotion) {
+      audioEnergy.set(0);
+      audioBeat.set(0);
+      return undefined;
+    }
+
+    const frequencies = new Uint8Array(analyser.frequencyBinCount);
+    let averageBass = 0;
+    let lastBeat = 0;
+    let frame = 0;
+    const analyze = (now) => {
+      analyser.getByteFrequencyData(frequencies);
+      let bass = 0;
+      for (let index = 1; index <= 8; index += 1) bass += frequencies[index];
+      bass /= 8;
+
+      if (bass - averageBass > Math.max(8, averageBass * 0.08) && now - lastBeat > 240) {
+        lastBeat = now;
+        audioBeat.set(1);
+      } else {
+        audioBeat.set(audioBeat.get() * 0.86);
+      }
+      averageBass = averageBass * 0.92 + bass * 0.08;
+      audioEnergy.set(Math.max(0, Math.min(1, (bass - 18) / 135)));
+      frame = requestAnimationFrame(analyze);
+    };
+
+    frame = requestAnimationFrame(analyze);
+    return () => cancelAnimationFrame(frame);
+  }, [audioReactivePlaying, prefersReducedMotion, audioBeat, audioEnergy]);
+
+  useEffect(() => {
     const audio = soundtrackRef.current;
     if (!audio) return;
 
     if (playing || slideshow) {
       audio.pause();
       setMusicPlaying(false);
+      setAudioReactivePlaying(false);
       return;
     }
 
@@ -518,13 +619,16 @@ function App() {
       if (playing || slideshow || audio.paused) {
         audio.pause();
         setMusicPlaying(false);
+        setAudioReactivePlaying(false);
         return;
       }
       setMusicPlaying(true);
+      setAudioReactivePlaying(true);
       setMusicNeedsGesture(false);
     }).catch(() => {
       if (!playing && !slideshow) {
         setMusicPlaying(false);
+        setAudioReactivePlaying(false);
         setMusicNeedsGesture(true);
       }
     });
@@ -543,12 +647,17 @@ function App() {
         if (playing || slideshow || audio.paused) {
           audio.pause();
           setMusicPlaying(false);
+          setAudioReactivePlaying(false);
           return;
         }
         setMusicPlaying(true);
+        setAudioReactivePlaying(true);
         setMusicNeedsGesture(false);
       }).catch(() => {
-        if (!playing && !slideshow) setMusicNeedsGesture(true);
+        if (!playing && !slideshow) {
+          setAudioReactivePlaying(false);
+          setMusicNeedsGesture(true);
+        }
       });
     };
 
@@ -665,13 +774,16 @@ function App() {
           return;
         }
         setMusicPlaying(true);
+        setAudioReactivePlaying(true);
         setMusicNeedsGesture(false);
       } catch {
+        setAudioReactivePlaying(false);
         setMusicNeedsGesture(true);
       }
     } else {
       audio.pause();
       setMusicPlaying(false);
+      setAudioReactivePlaying(false);
       setMusicNeedsGesture(false);
     }
   };
@@ -682,6 +794,7 @@ function App() {
       slideshowSoundtrackRef.current.pause();
       slideshowSoundtrackRef.current.currentTime = 0;
     }
+    setAudioReactivePlaying(false);
     setSlideshow(false);
     setSelectedMedia(null);
   };
@@ -692,6 +805,7 @@ function App() {
     setPlaying(false);
     soundtrackRef.current?.pause();
     setMusicPlaying(false);
+    setAudioReactivePlaying(false);
     setSelectedMedia(0);
     setSlideshow(true);
     setSlideshowMusicError(false);
@@ -702,7 +816,9 @@ function App() {
       audio.src = `${import.meta.env.BASE_URL}media/${encodeURIComponent(track)}`;
       audio.load();
       await audio.play();
+      setAudioReactivePlaying(true);
     } catch {
+      setAudioReactivePlaying(false);
       setSlideshowMusicError(true);
     }
     setShowLaunchPrompt(false);
@@ -771,6 +887,7 @@ function App() {
 
   const handleVideoPlay = () => {
     slideshowSoundtrackRef.current?.pause();
+    setAudioReactivePlaying(false);
     setPlaying(true);
     setAutoplayBlocked(false);
   };
@@ -815,6 +932,11 @@ function App() {
 
   return (
     <main>
+      <AudioReactiveVisual
+        active={audioReactivePlaying && !slideshow}
+        energy={smoothAudioEnergy}
+        beat={smoothAudioBeat}
+      />
       <section className="film-section">
         <div className="film-inner">
           <div className="film-copy"><p className="eyebrow"><span /> 22 novembre · Joyeux anniversaire</p><h2>Une lumière<br /><em>qui rayonne.</em></h2><p>Paola Jessica, ta lumière brille intensément. Les portes du soleil levant seront toujours là pour t’accompagner et te faire avancer.</p></div>
@@ -945,6 +1067,7 @@ function App() {
 
       {selectedMedia !== null && (
         <div ref={lightboxRef} className={`lightbox${slideshow ? ' is-slideshow' : ''}`} role="dialog" aria-modal="true" aria-label={slideshow ? 'Diaporama plein écran' : 'Souvenir en grand format'} onClick={closeAlbum}>
+          {slideshow && <AudioReactiveVisual active={audioReactivePlaying} energy={smoothAudioEnergy} beat={smoothAudioBeat} inSlideshow />}
           <button className="lightbox-close" aria-label="Fermer" onClick={closeAlbum}><X size={22} /></button>
           {slideshow && <button className="slideshow-stop" onClick={(event) => { event.stopPropagation(); stopSlideshow(); setSelectedMedia(null); }}><Pause size={15} /> Arrêter le diaporama</button>}
           <button className="lightbox-arrow lightbox-prev" aria-label="Souvenir précédent" onClick={(event) => { event.stopPropagation(); movePhoto(-1); }}><ArrowLeft size={23} /></button>
